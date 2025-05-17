@@ -1,12 +1,73 @@
 <!DOCTYPE html>
 <html lang="pt-br">
 <head>
-  <meta charset="UTF-8" />
-  <title>Jogo de Dados Multiplayer - Firebase</title>
+  <meta charset="UTF-8">
+  <title>Jogo de Dados Firebase Completo</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://kit.fontawesome.com/a076d05399.js" crossorigin="anonymous"></script>
+  <style>
+    .dice {
+      transition: transform 0.5s ease-out;
+    }
+    .shake {
+      animation: shake 0.5s ease-in-out;
+    }
+    @keyframes shake {
+      0% { transform: translate(0, 0) rotate(0deg); }
+      15% { transform: translate(-5px, -5px) rotate(-5deg); }
+      30% { transform: translate(5px, 5px) rotate(5deg); }
+      45% { transform: translate(-5px, 5px) rotate(-5deg); }
+      60% { transform: translate(5px, -5px) rotate(5deg); }
+      75% { transform: translate(-5px, 0) rotate(-5deg); }
+      90% { transform: translate(5px, 0) rotate(5deg); }
+      100% { transform: translate(0, 0) rotate(0deg); }
+    }
+    .dot {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background-color: #111;
+      position: absolute;
+    }
+  </style>
+</head>
+<body class="bg-gradient-to-br from-purple-900 to-blue-800 min-h-screen flex flex-col items-center justify-center p-4 text-white">
+  <h1 class="text-4xl font-bold mb-4">🎲 Jogo de Dados Multiplayer</h1>
+  <p id="room-status" class="text-lg text-purple-200 mb-2">Modo Individual</p>
+
+  <div class="flex gap-4 mb-6">
+    <button id="create-room" class="bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded">Criar Sala</button>
+    <button id="join-room" class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded">Entrar na Sala</button>
+  </div>
+
+  <div class="flex gap-6 mb-6">
+    <div id="dice1" class="dice relative w-24 h-24 bg-white rounded-xl shadow-xl flex items-center justify-center"></div>
+    <div id="dice2" class="dice relative w-24 h-24 bg-white rounded-xl shadow-xl flex items-center justify-center"></div>
+  </div>
+
+  <button id="roll" class="bg-yellow-400 text-black px-6 py-3 rounded-full text-xl font-bold shadow hover:bg-yellow-500 mb-4">
+    <i class="fas fa-dice"></i> Rolar Dados
+  </button>
+
+  <button id="clear-history" class="bg-gray-700 text-white px-4 py-2 rounded mb-6">
+    Limpar Histórico
+  </button>
+
+  <div id="dice-display" class="text-2xl font-bold mb-4">-</div>
+
+  <div class="bg-black bg-opacity-30 rounded-xl p-4 w-full max-w-md mb-6">
+    <h2 class="text-xl font-semibold mb-2">Histórico</h2>
+    <div id="history" class="space-y-1 text-sm"></div>
+  </div>
+
+  <div class="bg-black bg-opacity-30 rounded-xl p-4 w-full max-w-md">
+    <h2 class="text-xl font-semibold mb-2">Jogadores na sala</h2>
+    <ul id="user-list" class="list-disc list-inside text-sm"></ul>
+  </div>
+
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-    import { getDatabase, ref, set, onValue, push, onChildAdded, remove, get } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+    import { getDatabase, ref, set, push, onChildAdded, remove, update, onValue } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyAZMZKT8rse5Vbd_ql2PmScrw2KwwsXCjk",
@@ -25,106 +86,190 @@
     let currentRoom = null;
     let currentUser = null;
     let isHost = false;
+    const userId = Math.random().toString(36).substring(2, 10);
+
+    const dice1 = document.getElementById("dice1");
+    const dice2 = document.getElementById("dice2");
+    const historyDisplay = document.getElementById("history");
+    const userList = document.getElementById("user-list");
+    const roomStatus = document.getElementById("room-status");
+    const diceDisplay = document.getElementById("dice-display");
+
+    const dotPositions = {
+      1: [[50, 50]],
+      2: [[25, 25], [75, 75]],
+      3: [[25, 25], [50, 50], [75, 75]],
+      4: [[25, 25], [25, 75], [75, 25], [75, 75]],
+      5: [[25, 25], [25, 75], [50, 50], [75, 25], [75, 75]],
+      6: [[25, 25], [25, 50], [25, 75], [75, 25], [75, 50], [75, 75]]
+    };
+
+    function createDots(diceElement, value) {
+      diceElement.innerHTML = '';
+      if (!value) return;
+      dotPositions[value].forEach(([x, y]) => {
+        const dot = document.createElement("div");
+        dot.className = "dot";
+        dot.style.left = `${x}%`;
+        dot.style.top = `${y}%`;
+        dot.style.transform = "translate(-50%, -50%)";
+        diceElement.appendChild(dot);
+      });
+    }
+
+    function renderRoll(username, v1, v2) {
+      const total = v1 + v2;
+      createDots(dice1, v1);
+      createDots(dice2, v2);
+      
+      let msg = `${v1} + ${v2} = ${total}`;
+      if (total === 2) msg += " 🐍 Serpente!";
+      else if (total === 7 || total === 11) msg += " 🎉 Sorte nos jogos!";
+      else if (total === 12) msg += " 🚀 Doze! Grande jogada!";
+      diceDisplay.textContent = msg;
+    
+      const p = document.createElement("p");
+      p.innerHTML = `<strong>${username}</strong> rolou <span class="text-yellow-300">${v1} + ${v2}</span> = <span class="text-green-400 font-bold">${total}</span>`;
+      historyDisplay.insertBefore(p, historyDisplay.firstChild);
+    }
+
+    function animateDiceRoll(callback) {
+      dice1.classList.add("shake");
+      dice2.classList.add("shake");
+      setTimeout(() => {
+        dice1.classList.remove("shake");
+        dice2.classList.remove("shake");
+        callback();
+      }, 500);
+    }
+
+    function rollDice() {
+      animateDiceRoll(() => {
+        const v1 = Math.floor(Math.random() * 6) + 1;
+        const v2 = Math.floor(Math.random() * 6) + 1;
+
+        if (currentRoom && currentUser) {
+          const rollRef = push(ref(db, `rooms/${currentRoom}/history`));
+          set(rollRef, { username: currentUser, value1: v1, value2: v2, timestamp: Date.now() });
+        } else {
+          renderRoll("Você", v1, v2);
+        }
+      });
+    }
 
     function createRoom(username) {
       const roomId = 'sala-' + Math.random().toString(36).substring(2, 8);
-      const roomRef = ref(db, 'rooms/' + roomId);
       currentRoom = roomId;
       currentUser = username;
       isHost = true;
-
-      set(roomRef + '/users/' + username, true);
-      window.location.hash = roomId;
-      document.getElementById('room-id').textContent = roomId;
+      update(ref(db, `rooms/${roomId}/users/${userId}`), { username });
       listenToRoom(roomId);
+      roomStatus.textContent = `Sala: ${roomId}`;
     }
 
-    function joinRoom(username, roomId) {
-      const userRef = ref(db, 'rooms/' + roomId + '/users/' + username);
+    function joinRoom(roomId, username) {
       currentRoom = roomId;
       currentUser = username;
       isHost = false;
-
-      set(userRef, true);
-      document.getElementById('room-id').textContent = roomId;
+      update(ref(db, `rooms/${roomId}/users/${userId}`), { username });
       listenToRoom(roomId);
+      roomStatus.textContent = `Sala: ${roomId}`;
     }
 
     function listenToRoom(roomId) {
-      const usersRef = ref(db, 'rooms/' + roomId + '/users');
-      const historyRef = ref(db, 'rooms/' + roomId + '/history');
+      const usersRef = ref(db, `rooms/${roomId}/users`);
+      const historyRef = ref(db, `rooms/${roomId}/history`);
 
-      onValue(usersRef, (snapshot) => {
+      onValue(usersRef, snapshot => {
         const users = snapshot.val() || {};
-        const userList = document.getElementById('user-list');
-        userList.innerHTML = '';
-        Object.keys(users).forEach(name => {
-          const li = document.createElement('li');
-          li.textContent = name;
+        userList.innerHTML = "";
+        Object.values(users).forEach(user => {
+          const li = document.createElement("li");
+          li.textContent = user.username;
           userList.appendChild(li);
         });
       });
 
-      onChildAdded(historyRef, (snapshot) => {
-        const { username, value1, value2, total } = snapshot.val();
-        const history = document.getElementById('history');
-        const p = document.createElement('p');
-        p.textContent = `${username} rolou ${value1} + ${value2} = ${total}`;
-        history.appendChild(p);
-        document.getElementById('dice').textContent = `🎲 ${value1} + ${value2} = ${total}`;
+      onChildAdded(historyRef, snapshot => {
+        const roll = snapshot.val();
+        renderRoll(roll.username, roll.value1, roll.value2);
       });
     }
 
-    function rollDice() {
-      const value1 = Math.floor(Math.random() * 6) + 1;
-      const value2 = Math.floor(Math.random() * 6) + 1;
-      const total = value1 + value2;
-
-      const rollRef = push(ref(db, 'rooms/' + currentRoom + '/history'));
-      set(rollRef, {
-        username: currentUser,
-        value1,
-        value2,
-        total,
-        timestamp: Date.now()
+    
+    document.addEventListener('DOMContentLoaded', () => {
+      document.getElementById("roll").addEventListener("click", rollDice);
+      document.getElementById("create-room").addEventListener("click", () => showModal("create"));
+      document.getElementById("join-room").addEventListener("click", () => showModal("join"));
+      document.getElementById("clear-history").addEventListener("click", () => {
+        if (!currentRoom || isHost) {
+          if (currentRoom) remove(ref(db, `rooms/${currentRoom}/history`));
+          historyDisplay.innerHTML = "";
+          dice1.innerHTML = "";
+          dice2.innerHTML = "";
+          diceDisplay.textContent = "-";
+        } else {
+          alert("Apenas o host pode limpar o histórico.");
+        }
       });
+    });
+    
+
+    document.getElementById("create-room").onclick = () => showModal("create");
+    };
+
+    document.getElementById("join-room").onclick = () => showModal("join");
+    };
+
+    
+    function showModal(mode) {
+      const overlay = document.getElementById("modal-overlay");
+      const title = document.getElementById("modal-title");
+      const inputRoom = document.getElementById("modal-roomid");
+      overlay.classList.remove("hidden");
+      title.textContent = mode === "create" ? "Criar Sala" : "Entrar na Sala";
+      inputRoom.classList.toggle("hidden", mode === "create");
+
+      document.getElementById("modal-confirm").onclick = () => {
+        const name = document.getElementById("modal-username").value.trim();
+        const room = document.getElementById("modal-roomid").value.trim();
+        if (mode === "create" && name) createRoom(name);
+        if (mode === "join" && name && room) joinRoom(room, name);
+        overlay.classList.add("hidden");
+        document.getElementById("modal-username").value = "";
+        document.getElementById("modal-roomid").value = "";
+      };
+      document.getElementById("modal-cancel").onclick = () => {
+        overlay.classList.add("hidden");
+      };
     }
 
-    window.onload = () => {
-      document.getElementById('create-room').onclick = () => {
-        const name = prompt('Seu nome:');
-        if (name) createRoom(name);
-      };
 
-      document.getElementById('join-room').onclick = () => {
-        const name = prompt('Seu nome:');
-        const roomId = prompt('ID da sala:');
-        if (name && roomId) joinRoom(name, roomId);
-      };
-
-      document.getElementById('roll').onclick = () => {
-        if (currentRoom && currentUser) rollDice();
-        else alert('Entre em uma sala primeiro');
-      };
+    document.getElementById("clear-history").onclick = () => {
+      if (!currentRoom || isHost) {
+        if (currentRoom) remove(ref(db, `rooms/${currentRoom}/history`));
+        historyDisplay.innerHTML = "";
+        dice1.innerHTML = "";
+        dice2.innerHTML = "";
+        diceDisplay.textContent = "-";
+      } else {
+        alert("Apenas o host pode limpar o histórico.");
+      }
     };
   </script>
-</head>
-<body class="bg-gray-900 text-white text-center p-8 space-y-6">
-  <h1 class="text-3xl font-bold">🎲 Jogo de Dados Multiplayer</h1>
-  <p>ID da sala: <span id="room-id" class="text-yellow-300">nenhuma</span></p>
-  <div class="flex justify-center gap-4">
-    <button id="create-room" class="bg-green-600 px-4 py-2 rounded">Criar Sala</button>
-    <button id="join-room" class="bg-blue-600 px-4 py-2 rounded">Entrar na Sala</button>
+
+<!-- Modais -->
+<div id="modal-overlay" class="fixed inset-0 bg-black bg-opacity-60 hidden justify-center items-center z-50">
+  <div class="bg-white text-black rounded-lg shadow-xl p-6 max-w-sm w-full space-y-4">
+    <h2 id="modal-title" class="text-xl font-bold">Entrar</h2>
+    <input id="modal-username" type="text" placeholder="Seu nome" class="w-full border p-2 rounded">
+    <input id="modal-roomid" type="text" placeholder="ID da sala (apenas ao entrar)" class="w-full border p-2 rounded hidden">
+    <div class="flex justify-end gap-2 pt-2">
+      <button id="modal-cancel" class="bg-gray-400 px-3 py-1 rounded">Cancelar</button>
+      <button id="modal-confirm" class="bg-blue-600 text-white px-3 py-1 rounded">Confirmar</button>
+    </div>
   </div>
-  <button id="roll" class="bg-yellow-500 px-6 py-3 rounded text-black font-bold text-xl">Rolar Dados</button>
-  <div id="dice" class="text-2xl mt-4">🎲 ?</div>
-  <div class="mt-6">
-    <h2 class="text-lg font-semibold">Jogadores na sala:</h2>
-    <ul id="user-list" class="space-y-1"></ul>
-  </div>
-  <div class="mt-6">
-    <h2 class="text-lg font-semibold">Histórico:</h2>
-    <div id="history" class="space-y-1"></div>
-  </div>
+</div>
+
 </body>
 </html>
