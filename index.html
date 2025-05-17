@@ -1,275 +1,763 @@
 <!DOCTYPE html>
 <html lang="pt-br">
 <head>
-  <meta charset="UTF-8">
-  <title>Jogo de Dados Firebase Completo</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://kit.fontawesome.com/a076d05399.js" crossorigin="anonymous"></script>
-  <style>
-    .dice {
-      transition: transform 0.5s ease-out;
-    }
-    .shake {
-      animation: shake 0.5s ease-in-out;
-    }
-    @keyframes shake {
-      0% { transform: translate(0, 0) rotate(0deg); }
-      15% { transform: translate(-5px, -5px) rotate(-5deg); }
-      30% { transform: translate(5px, 5px) rotate(5deg); }
-      45% { transform: translate(-5px, 5px) rotate(-5deg); }
-      60% { transform: translate(5px, -5px) rotate(5deg); }
-      75% { transform: translate(-5px, 0) rotate(-5deg); }
-      90% { transform: translate(5px, 0) rotate(5deg); }
-      100% { transform: translate(0, 0) rotate(0deg); }
-    }
-    .dot {
-      width: 16px;
-      height: 16px;
-      border-radius: 50%;
-      background-color: #111;
-      position: absolute;
-    }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rolador de Dados Multiplayer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @keyframes shake {
+            0% { transform: translate(0, 0) rotate(0deg); }
+            15% { transform: translate(-5px, -5px) rotate(-5deg); }
+            30% { transform: translate(5px, 5px) rotate(5deg); }
+            45% { transform: translate(-5px, 5px) rotate(-5deg); }
+            60% { transform: translate(5px, -5px) rotate(5deg); }
+            75% { transform: translate(-5px, 0) rotate(-5deg); }
+            90% { transform: translate(5px, 0) rotate(5deg); }
+            100% { transform: translate(0, 0) rotate(0deg); }
+        }
+        
+        .shake {
+            animation: shake 0.5s ease-in-out;
+        }
+        
+        .dice {
+            transition: transform 0.5s ease-out;
+        }
+        
+        .dot {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background-color: #111;
+            position: absolute;
+        }
+        
+        .modal {
+            transition: opacity 0.3s ease, transform 0.3s ease;
+        }
+        
+        .modal-hidden {
+            opacity: 0;
+            transform: scale(0.9);
+            pointer-events: none;
+        }
+        
+        .user-badge {
+            position: relative;
+        }
+        
+        .user-badge::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background-color: #10B981;
+        }
+        
+        .user-badge.offline::after {
+            background-color: #EF4444;
+        }
+        
+        .notification {
+            position: fixed;
+            bottom: 1rem;
+            right: 1rem;
+            background-color: #10B981;
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 0.5rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            z-index: 100;
+            animation: slideIn 0.3s ease-out;
+        }
+        
+        @keyframes slideIn {
+            from { transform: translateX(100%); }
+            to { transform: translateX(0); }
+        }
+    </style>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import { getDatabase, ref, push, set, onChildAdded, onValue, update, remove } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyAZMZKT8rse5Vbd_ql2PmScrw2KwwsXCjk",
+    authDomain: "jogo-dados.firebaseapp.com",
+    databaseURL: "https://jogo-dados-default-rtdb.firebaseio.com",
+    projectId: "jogo-dados",
+    storageBucket: "jogo-dados.firebasestorage.app",
+    messagingSenderId: "187282881305",
+    appId: "1:187282881305:web:802bbae9d1e34a23062388",
+    measurementId: "G-45FT045HY9"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db = getDatabase(app);
+
+  window.firebaseApp = app;
+  window.firebaseDB = db;
+</script>
+
 </head>
-<body class="bg-gradient-to-br from-purple-900 to-blue-800 min-h-screen flex flex-col items-center justify-center p-4 text-white">
-  <h1 class="text-4xl font-bold mb-4">🎲 Jogo de Dados Multiplayer</h1>
-  <p id="room-status" class="text-lg text-purple-200 mb-2">Modo Individual</p>
-
-  <div class="flex gap-4 mb-6">
-    <button id="create-room" class="bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded">Criar Sala</button>
-    <button id="join-room" class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded">Entrar na Sala</button>
-  </div>
-
-  <div class="flex gap-6 mb-6">
-    <div id="dice1" class="dice relative w-24 h-24 bg-white rounded-xl shadow-xl flex items-center justify-center"></div>
-    <div id="dice2" class="dice relative w-24 h-24 bg-white rounded-xl shadow-xl flex items-center justify-center"></div>
-  </div>
-
-  <button id="roll" class="bg-yellow-400 text-black px-6 py-3 rounded-full text-xl font-bold shadow hover:bg-yellow-500 mb-4">
-    <i class="fas fa-dice"></i> Rolar Dados
-  </button>
-
-  <button id="clear-history" class="bg-gray-700 text-white px-4 py-2 rounded mb-6">
-    Limpar Histórico
-  </button>
-
-  <div id="dice-display" class="text-2xl font-bold mb-4">-</div>
-
-  <div class="bg-black bg-opacity-30 rounded-xl p-4 w-full max-w-md mb-6">
-    <h2 class="text-xl font-semibold mb-2">Histórico</h2>
-    <div id="history" class="space-y-1 text-sm"></div>
-  </div>
-
-  <div class="bg-black bg-opacity-30 rounded-xl p-4 w-full max-w-md">
-    <h2 class="text-xl font-semibold mb-2">Jogadores na sala</h2>
-    <ul id="user-list" class="list-disc list-inside text-sm"></ul>
-  </div>
-
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-    import { getDatabase, ref, set, push, onChildAdded, remove, update, onValue } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
-
-    const firebaseConfig = {
-      apiKey: "AIzaSyAZMZKT8rse5Vbd_ql2PmScrw2KwwsXCjk",
-      authDomain: "jogo-dados.firebaseapp.com",
-      databaseURL: "https://jogo-dados-default-rtdb.firebaseio.com",
-      projectId: "jogo-dados",
-      storageBucket: "jogo-dados.firebasestorage.app",
-      messagingSenderId: "187282881305",
-      appId: "1:187282881305:web:802bbae9d1e34a23062388",
-      measurementId: "G-45FT045HY9"
-    };
-
-    const app = initializeApp(firebaseConfig);
-    const db = getDatabase(app);
-
-    let currentRoom = null;
-    let currentUser = null;
-    let isHost = false;
-    const userId = Math.random().toString(36).substring(2, 10);
-
-    const dice1 = document.getElementById("dice1");
-    const dice2 = document.getElementById("dice2");
-    const historyDisplay = document.getElementById("history");
-    const userList = document.getElementById("user-list");
-    const roomStatus = document.getElementById("room-status");
-    const diceDisplay = document.getElementById("dice-display");
-
-    const dotPositions = {
-      1: [[50, 50]],
-      2: [[25, 25], [75, 75]],
-      3: [[25, 25], [50, 50], [75, 75]],
-      4: [[25, 25], [25, 75], [75, 25], [75, 75]],
-      5: [[25, 25], [25, 75], [50, 50], [75, 25], [75, 75]],
-      6: [[25, 25], [25, 50], [25, 75], [75, 25], [75, 50], [75, 75]]
-    };
-
-    function createDots(diceElement, value) {
-      diceElement.innerHTML = '';
-      if (!value) return;
-      dotPositions[value].forEach(([x, y]) => {
-        const dot = document.createElement("div");
-        dot.className = "dot";
-        dot.style.left = `${x}%`;
-        dot.style.top = `${y}%`;
-        dot.style.transform = "translate(-50%, -50%)";
-        diceElement.appendChild(dot);
-      });
-    }
-
-    function renderRoll(username, v1, v2) {
-      const total = v1 + v2;
-      createDots(dice1, v1);
-      createDots(dice2, v2);
-      
-      let msg = `${v1} + ${v2} = ${total}`;
-      if (total === 2) msg += " 🐍 Serpente!";
-      else if (total === 7 || total === 11) msg += " 🎉 Sorte nos jogos!";
-      else if (total === 12) msg += " 🚀 Doze! Grande jogada!";
-      diceDisplay.textContent = msg;
-    
-      const p = document.createElement("p");
-      p.innerHTML = `<strong>${username}</strong> rolou <span class="text-yellow-300">${v1} + ${v2}</span> = <span class="text-green-400 font-bold">${total}</span>`;
-      historyDisplay.insertBefore(p, historyDisplay.firstChild);
-    }
-
-    function animateDiceRoll(callback) {
-      dice1.classList.add("shake");
-      dice2.classList.add("shake");
-      setTimeout(() => {
-        dice1.classList.remove("shake");
-        dice2.classList.remove("shake");
-        callback();
-      }, 500);
-    }
-
-    function rollDice() {
-      animateDiceRoll(() => {
-        const v1 = Math.floor(Math.random() * 6) + 1;
-        const v2 = Math.floor(Math.random() * 6) + 1;
-
-        if (currentRoom && currentUser) {
-          const rollRef = push(ref(db, `rooms/${currentRoom}/history`));
-          set(rollRef, { username: currentUser, value1: v1, value2: v2, timestamp: Date.now() });
-        } else {
-          renderRoll("Você", v1, v2);
-        }
-      });
-    }
-
-    function createRoom(username) {
-      const roomId = 'sala-' + Math.random().toString(36).substring(2, 8);
-      currentRoom = roomId;
-      currentUser = username;
-      isHost = true;
-      update(ref(db, `rooms/${roomId}/users/${userId}`), { username });
-      listenToRoom(roomId);
-      roomStatus.textContent = `Sala: ${roomId}`;
-    }
-
-    function joinRoom(roomId, username) {
-      currentRoom = roomId;
-      currentUser = username;
-      isHost = false;
-      update(ref(db, `rooms/${roomId}/users/${userId}`), { username });
-      listenToRoom(roomId);
-      roomStatus.textContent = `Sala: ${roomId}`;
-    }
-
-    function listenToRoom(roomId) {
-      const usersRef = ref(db, `rooms/${roomId}/users`);
-      const historyRef = ref(db, `rooms/${roomId}/history`);
-
-      onValue(usersRef, snapshot => {
-        const users = snapshot.val() || {};
-        userList.innerHTML = "";
-        Object.values(users).forEach(user => {
-          const li = document.createElement("li");
-          li.textContent = user.username;
-          userList.appendChild(li);
-        });
-      });
-
-      onChildAdded(historyRef, snapshot => {
-        const roll = snapshot.val();
-        renderRoll(roll.username, roll.value1, roll.value2);
-      });
-    }
-
-    
-    document.addEventListener('DOMContentLoaded', () => {
-      document.getElementById("roll").addEventListener("click", rollDice);
-      document.getElementById("create-room").addEventListener("click", () => showModal("create"));
-      document.getElementById("join-room").addEventListener("click", () => showModal("join"));
-      document.getElementById("clear-history").addEventListener("click", () => {
-        if (!currentRoom || isHost) {
-          if (currentRoom) remove(ref(db, `rooms/${currentRoom}/history`));
-          historyDisplay.innerHTML = "";
-          dice1.innerHTML = "";
-          dice2.innerHTML = "";
-          diceDisplay.textContent = "-";
-        } else {
-          alert("Apenas o host pode limpar o histórico.");
-        }
-      });
-    });
-    
-
-    document.getElementById("create-room").onclick = () => showModal("create");
-    };
-
-    document.getElementById("join-room").onclick = () => showModal("join");
-    };
-
-    
-    function showModal(mode) {
-      const overlay = document.getElementById("modal-overlay");
-      const title = document.getElementById("modal-title");
-      const inputRoom = document.getElementById("modal-roomid");
-      overlay.classList.remove("hidden");
-      title.textContent = mode === "create" ? "Criar Sala" : "Entrar na Sala";
-      inputRoom.classList.toggle("hidden", mode === "create");
-
-      document.getElementById("modal-confirm").onclick = () => {
-        const name = document.getElementById("modal-username").value.trim();
-        const room = document.getElementById("modal-roomid").value.trim();
-        if (mode === "create" && name) createRoom(name);
-        if (mode === "join" && name && room) joinRoom(room, name);
-        overlay.classList.add("hidden");
-        document.getElementById("modal-username").value = "";
-        document.getElementById("modal-roomid").value = "";
-      };
-      document.getElementById("modal-cancel").onclick = () => {
-        overlay.classList.add("hidden");
-      };
-    }
-
-
-    document.getElementById("clear-history").onclick = () => {
-      if (!currentRoom || isHost) {
-        if (currentRoom) remove(ref(db, `rooms/${currentRoom}/history`));
-        historyDisplay.innerHTML = "";
-        dice1.innerHTML = "";
-        dice2.innerHTML = "";
-        diceDisplay.textContent = "-";
-      } else {
-        alert("Apenas o host pode limpar o histórico.");
-      }
-    };
-  </script>
-
-<!-- Modais -->
-<div id="modal-overlay" class="fixed inset-0 bg-black bg-opacity-60 hidden justify-center items-center z-50">
-  <div class="bg-white text-black rounded-lg shadow-xl p-6 max-w-sm w-full space-y-4">
-    <h2 id="modal-title" class="text-xl font-bold">Entrar</h2>
-    <input id="modal-username" type="text" placeholder="Seu nome" class="w-full border p-2 rounded">
-    <input id="modal-roomid" type="text" placeholder="ID da sala (apenas ao entrar)" class="w-full border p-2 rounded hidden">
-    <div class="flex justify-end gap-2 pt-2">
-      <button id="modal-cancel" class="bg-gray-400 px-3 py-1 rounded">Cancelar</button>
-      <button id="modal-confirm" class="bg-blue-600 text-white px-3 py-1 rounded">Confirmar</button>
+<body class="bg-gradient-to-br from-purple-900 to-blue-800 min-h-screen flex flex-col items-center justify-center p-4">
+    <!-- Modal de Criação de Sala -->
+    <div id="roomModal" class="modal fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 modal-hidden">
+        <div class="bg-gray-800 rounded-xl p-6 w-full max-w-md mx-4">
+            <h2 class="text-2xl font-bold text-white mb-4">Criar Sala Privada</h2>
+            
+            <div class="mb-4">
+                <label for="username" class="block text-purple-200 mb-2">Seu Nome de Exibição</label>
+                <input type="text" id="username" placeholder="Ex: Jogador1" 
+                    class="w-full px-4 py-2 rounded-lg bg-gray-700 text-white focus:outline-none focus:ring-2 focus:ring-purple-500">
+            </div>
+            
+            <div class="flex gap-3">
+                <button id="createRoomBtn" class="flex-1 bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-lg transition">
+                    Criar Sala
+                </button>
+                <button id="cancelRoomBtn" class="flex-1 bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg transition">
+                    Cancelar
+                </button>
+            </div>
+        </div>
     </div>
-  </div>
-</div>
-
+    
+    <!-- Modal de Entrada na Sala -->
+    <div id="joinModal" class="modal fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 modal-hidden">
+        <div class="bg-gray-800 rounded-xl p-6 w-full max-w-md mx-4">
+            <h2 class="text-2xl font-bold text-white mb-4">Entrar na Sala</h2>
+            
+            <div class="mb-4">
+                <label for="joinUsername" class="block text-purple-200 mb-2">Seu Nome de Exibição</label>
+                <input type="text" id="joinUsername" placeholder="Ex: Jogador2" 
+                    class="w-full px-4 py-2 rounded-lg bg-gray-700 text-white focus:outline-none focus:ring-2 focus:ring-purple-500">
+            </div>
+            
+            <div class="flex gap-3">
+                <button id="joinRoomBtn" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition">
+                    Entrar
+                </button>
+                <button id="cancelJoinBtn" class="flex-1 bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg transition">
+                    Cancelar
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Modal de Link da Sala -->
+    <div id="linkModal" class="modal fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 modal-hidden">
+        <div class="bg-gray-800 rounded-xl p-6 w-full max-w-md mx-4">
+            <h2 class="text-2xl font-bold text-white mb-4">Sala Criada!</h2>
+            
+            <p class="text-purple-200 mb-4">Compartilhe este link com seus amigos:</p>
+            
+            <div class="flex items-center mb-4 bg-gray-700 rounded-lg overflow-hidden">
+                <input type="text" id="roomLink" readonly 
+                    class="flex-1 px-4 py-2 bg-gray-700 text-white focus:outline-none">
+                <button id="copyLinkBtn" class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2">
+                    <i class="fas fa-copy"></i>
+                </button>
+            </div>
+            
+            <div class="flex gap-3">
+                <button id="closeLinkBtn" class="flex-1 bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg transition">
+                    Fechar
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Conteúdo Principal -->
+    <div class="text-center mb-8">
+        <h1 class="text-4xl md:text-5xl font-bold text-white mb-2">Rolador de Dados</h1>
+        <p id="roomStatus" class="text-xl text-purple-200">Modo Individual</p>
+    </div>
+    
+    <div id="userList" class="flex flex-wrap gap-2 justify-center mb-4 hidden">
+        <!-- Usuários serão adicionados aqui -->
+    </div>
+    
+    <div class="flex flex-col md:flex-row items-center justify-center gap-8 mb-12">
+        <!-- Dice 1 -->
+        <div id="dice1" class="dice relative w-32 h-32 bg-white rounded-xl shadow-xl flex items-center justify-center">
+            <!-- Dots will be added by JavaScript -->
+        </div>
+        
+        <!-- Dice 2 -->
+        <div id="dice2" class="dice relative w-32 h-32 bg-white rounded-xl shadow-xl flex items-center justify-center">
+            <!-- Dots will be added by JavaScript -->
+        </div>
+    </div>
+    
+    <div class="text-center text-white mb-8">
+        <p id="total" class="text-2xl font-semibold">Total: <span class="text-yellow-300">-</span></p>
+        <p id="result" class="text-xl mt-2"></p>
+        <p id="currentUser" class="text-sm text-purple-300 mt-1"></p>
+    </div>
+    
+    <div class="flex gap-4 mb-8">
+        <button id="rollButton" class="bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-3 px-8 rounded-full text-lg transition-all duration-300 transform hover:scale-105 flex items-center gap-2">
+            <i class="fas fa-dice"></i> Rolar Dados
+        </button>
+        <button id="resetButton" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-6 rounded-full text-lg transition-all duration-300 transform hover:scale-105 flex items-center gap-2">
+            <i class="fas fa-trash-alt"></i> Limpar Histórico
+        </button>
+        <button id="createRoomButton" class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-6 rounded-full text-lg transition-all duration-300 transform hover:scale-105 flex items-center gap-2">
+            <i class="fas fa-users"></i> Criar Sala
+        </button>
+    </div>
+    
+    <div class="mt-4 text-purple-200 text-center w-full max-w-2xl">
+        <p class="mb-2">Histórico de rolagens:</p>
+        <div id="history" class="bg-black bg-opacity-30 rounded-xl p-4 max-h-96 overflow-y-auto">
+            <p class="text-purple-300 italic">Nenhuma rolagem registrada</p>
+        </div>
+    </div>
+    
+    <script>
+        
+let socket = {
+                connect: function(roomId, username) {
+                    console.log(`Conectando à sala ${roomId} como ${username}`);
+                    // Simula uma conexão
+                    this.roomId = roomId;
+                    this.username = username;
+                    
+                    // Simula outros jogadores (apenas para demonstração)
+                    if (Math.random() > 0.5) {
+                        setTimeout(() => {
+                            this.onmessage({ 
+                                type: 'user_joined', 
+                                data: { 
+                                    id: 'user2', 
+                                    username: 'Jogador2', 
+                                    timestamp: new Date().toISOString() 
+                                } 
+                            });
+                        }, 1000);
+                    }
+                },
+                
+                send: function(message) {
+                    console.log('Enviando mensagem:', message);
+                    // Simula resposta do servidor
+                    if (message.type === 'roll_dice') {
+                        setTimeout(() => {
+                            this.onmessage({ 
+                                type: 'dice_rolled', 
+                                data: { 
+                                    user: { id: this.username, username: this.username },
+                                    dice1: Math.floor(Math.random() * 6) + 1,
+                                    dice2: Math.floor(Math.random() * 6) + 1,
+                                    timestamp: new Date().toISOString()
+                                } 
+                            });
+                        }, 500);
+                    }
+                },
+                
+                onmessage: function() {}, // Será definido posteriormente
+                
+                disconnect: function() {
+                    console.log('Desconectando da sala');
+                    this.roomId = null;
+                    this.username = null;
+                }
+            };
+document.addEventListener('DOMContentLoaded', function() {
+            // Elementos do DOM
+            const dice1 = document.getElementById('dice1');
+            const dice2 = document.getElementById('dice2');
+            const rollButton = document.getElementById('rollButton');
+            const resetButton = document.getElementById('resetButton');
+            const createRoomButton = document.getElementById('createRoomButton');
+            const totalDisplay = document.getElementById('total').querySelector('span');
+            const resultDisplay = document.getElementById('result');
+            const currentUserDisplay = document.getElementById('currentUser');
+            const historyDisplay = document.getElementById('history');
+            const roomStatusDisplay = document.getElementById('roomStatus');
+            const userListDisplay = document.getElementById('userList');
+            
+            // Modais
+            const roomModal = document.getElementById('roomModal');
+            const joinModal = document.getElementById('joinModal');
+            const linkModal = document.getElementById('linkModal');
+            const createRoomBtn = document.getElementById('createRoomBtn');
+            const cancelRoomBtn = document.getElementById('cancelRoomBtn');
+            const joinRoomBtn = document.getElementById('joinRoomBtn');
+            const cancelJoinBtn = document.getElementById('cancelJoinBtn');
+            const closeLinkBtn = document.getElementById('closeLinkBtn');
+            const copyLinkBtn = document.getElementById('copyLinkBtn');
+            const roomLink = document.getElementById('roomLink');
+            const usernameInput = document.getElementById('username');
+            const joinUsernameInput = document.getElementById('joinUsername');
+            
+            // Estado da aplicação
+            let isRolling = false;
+            let rollHistory = [];
+            let currentRoom = null;
+            let currentUser = { id: 'local', username: 'Você' };
+            let isHost = false; // Usuário padrão para modo individual
+            let users = {};
+            let hasRolled = false; // Flag para controlar se já rolou
+            
+            // Simulação de conexão WebSocket (em uma aplicação real, seria um WebSocket real)
+            
+            
+            // Posições dos pontos nos dados (1-6)
+            const dotPositions = {
+                1: [[50, 50]],
+                2: [[25, 25], [75, 75]],
+                3: [[25, 25], [50, 50], [75, 75]],
+                4: [[25, 25], [25, 75], [75, 25], [75, 75]],
+                5: [[25, 25], [25, 75], [50, 50], [75, 25], [75, 75]],
+                6: [[25, 25], [25, 50], [25, 75], [75, 25], [75, 50], [75, 75]]
+            };
+            
+            // Funções auxiliares
+            function showModal(modal) {
+                document.querySelectorAll('.modal').forEach(m => m.classList.add('modal-hidden'));
+                modal.classList.remove('modal-hidden');
+            }
+            
+            function hideModal(modal) {
+                modal.classList.add('modal-hidden');
+            }
+            
+            function generateRoomId() {
+                return 'xxxx-xxxx-xxxx'.replace(/[x]/g, function() {
+                    return Math.floor(Math.random() * 16).toString(16);
+                });
+            }
+            
+            function formatTime(timestamp) {
+                const date = new Date(timestamp);
+                return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            }
+            
+            // Função para criar pontos nos dados
+            function createDots(diceElement, value) {
+                diceElement.innerHTML = '';
+                
+                if (!value) return; // Não mostra pontos se não houver valor
+                
+                dotPositions[value].forEach(pos => {
+                    const dot = document.createElement('div');
+                    dot.className = 'dot';
+                    dot.style.left = `${pos[0]}%`;
+                    dot.style.top = `${pos[1]}%`;
+                    dot.style.transform = 'translate(-50%, -50%)';
+                    diceElement.appendChild(dot);
+                });
+            }
+            
+            // Função para rolar um dado
+            function rollDie() {
+                return Math.floor(Math.random() * 6) + 1;
+            }
+            
+            // Função para atualizar a exibição dos dados
+            function updateDice(value1, value2, user = null) {
+                createDots(dice1, value1);
+                createDots(dice2, value2);
+                
+                const total = value1 + value2;
+                totalDisplay.textContent = total;
+                
+                // Mensagens especiais
+                if (total === 7 || total === 11) {
+                    resultDisplay.textContent = "🎉 Sorte nos jogos!";
+                    resultDisplay.className = "text-xl mt-2 text-green-400 font-bold";
+                } else if (total === 2) {
+                    resultDisplay.textContent = "🐍 Serpente!";
+                    resultDisplay.className = "text-xl mt-2 text-red-400 font-bold";
+                } else if (total === 12) {
+                    resultDisplay.textContent = "🚀 Doze! Grande jogada!";
+                    resultDisplay.className = "text-xl mt-2 text-yellow-400 font-bold";
+                } else {
+                    resultDisplay.textContent = "";
+                    resultDisplay.className = "text-xl mt-2";
+                }
+                
+                // Mostra quem rolou
+                if (user) {
+                    currentUserDisplay.textContent = `Rolado por: ${user.username}`;
+                } else {
+                    currentUserDisplay.textContent = '';
+                }
+                
+                return total;
+            }
+            
+            // Função para adicionar ao histórico
+            function addToHistory(value1, value2, total, user, timestamp) {
+                const historyItem = document.createElement('div');
+                historyItem.className = 'mb-2 last:mb-0';
+                
+                const time = formatTime(timestamp);
+                
+                historyItem.innerHTML = `
+                    <div class="flex items-start gap-2">
+                        <div class="bg-purple-900 text-white rounded-full w-8 h-8 flex items-center justify-center flex-shrink-0">
+                            <i class="fas fa-dice"></i>
+                        </div>
+                        <div class="flex-1">
+                            <div class="flex items-baseline gap-2">
+                                <span class="font-bold text-white">${user.username}</span>
+                                <span class="text-xs text-purple-300">${time}</span>
+                            </div>
+                            <div class="flex items-center gap-1 mt-1">
+                                <span class="text-white">${value1}</span>
+                                <span class="text-purple-300">+</span>
+                                <span class="text-white">${value2}</span>
+                                <span class="text-purple-300">=</span>
+                                <span class="text-yellow-300 font-bold">${total}</span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                
+                // Se o histórico estiver vazio, remove a mensagem padrão
+                if (historyDisplay.querySelector('.italic')) {
+                    historyDisplay.innerHTML = '';
+                }
+                
+                historyDisplay.insertBefore(historyItem, historyDisplay.firstChild);
+                
+                // Limita o histórico a 50 itens
+                if (historyDisplay.children.length > 50) {
+                    historyDisplay.removeChild(historyDisplay.lastChild);
+                }
+                
+                // Adiciona ao array de histórico
+                rollHistory.push({
+                    value1, value2, total, user, timestamp
+                });
+            }
+            
+            // Função para limpar o histórico
+            function resetHistory() {
+                rollHistory = [];
+                historyDisplay.innerHTML = '<p class="text-purple-300 italic">Nenhuma rolagem registrada</p>';
+            }
+            
+            // Função para rolar os dados (modo individual)
+            function rollDiceSinglePlayer() {
+                if (isRolling) return;
+                
+                isRolling = true;
+                rollButton.disabled = true;
+                
+                // Animação de shake
+                dice1.classList.add('shake');
+                dice2.classList.add('shake');
+                
+                // Animação de rolagem
+                let rolls = 0;
+                const maxRolls = 10;
+                const rollInterval = setInterval(() => {
+                    const tempValue1 = rollDie();
+                    const tempValue2 = rollDie();
+                    
+                    createDots(dice1, tempValue1);
+                    createDots(dice2, tempValue2);
+                    
+                    rolls++;
+                    if (rolls >= maxRolls) {
+                        clearInterval(rollInterval);
+                        
+                        // Remove a animação
+                        setTimeout(() => {
+                            dice1.classList.remove('shake');
+                            dice2.classList.remove('shake');
+                            
+                            // Valores finais
+                            const finalValue1 = rollDie();
+                            const finalValue2 = rollDie();
+                            const total = updateDice(finalValue1, finalValue2, currentUser);
+                            
+                            // Adiciona ao histórico
+                            const timestamp = new Date().toISOString();
+                            addToHistory(finalValue1, finalValue2, total, currentUser, timestamp);
+                            
+                            isRolling = false;
+                            rollButton.disabled = false;
+                            hasRolled = true;
+                        }, 100);
+                    }
+                }, 100);
+            }
+            
+            // Função para rolar os dados (modo multiplayer)
+            function rollDiceMultiplayer() {
+                if (isRolling) return;
+                
+                isRolling = true;
+                rollButton.disabled = true;
+                
+                // Animação de shake
+                dice1.classList.add('shake');
+                dice2.classList.add('shake');
+                
+                // Animação de rolagem
+                let rolls = 0;
+                const maxRolls = 10;
+                const rollInterval = setInterval(() => {
+                    const tempValue1 = rollDie();
+                    const tempValue2 = rollDie();
+                    
+                    createDots(dice1, tempValue1);
+                    createDots(dice2, tempValue2);
+                    
+                    rolls++;
+                    if (rolls >= maxRolls) {
+                        clearInterval(rollInterval);
+                        
+                        // Remove a animação
+                        setTimeout(() => {
+                            dice1.classList.remove('shake');
+                            dice2.classList.remove('shake');
+                            
+                            // Valores finais
+                            const finalValue1 = rollDie();
+                            const finalValue2 = rollDie();
+                            const total = updateDice(finalValue1, finalValue2, currentUser);
+                            
+                            // Adiciona ao histórico
+                            const timestamp = new Date().toISOString();
+                            addToHistory(finalValue1, finalValue2, total, currentUser, timestamp);
+                            
+                            // Se estiver em uma sala, envia para os outros jogadores
+                            if (currentRoom && !hasRolled) {
+                                socket.send({
+                                    type: 'roll_dice',
+                                    data: {
+                                        dice1: finalValue1,
+                                        dice2: finalValue2,
+                                        timestamp: timestamp
+                                    }
+                                });
+                            }
+                            
+                            isRolling = false;
+                            rollButton.disabled = false;
+                            hasRolled = true;
+                        }, 100);
+                    }
+                }, 100);
+            }
+            
+            // Função para criar uma sala
+            function createRoom(username) {
+                const roomId = generateRoomId();
+                isHost = true;
+                currentRoom = roomId;
+                currentUser = { id: 'user1', username: username };
+                
+                // Conecta ao "servidor"
+                socket.connect(roomId, username);
+                
+                // Atualiza a UI
+                roomStatusDisplay.textContent = `Sala: ${roomId} (Você é o host)`;
+                userListDisplay.classList.remove('hidden');
+                updateUserList([currentUser]);
+                
+                // Mostra o modal com o link
+                const url = new URL(window.location.href);
+                url.searchParams.set('room', roomId);
+                roomLink.value = url.toString();
+                showModal(linkModal);
+            }
+            
+            // Função para entrar em uma sala
+            function joinRoom(roomId, username) {
+                currentRoom = roomId;
+                currentUser = { id: `user${Math.floor(Math.random() * 1000)}`, username: username };
+                
+                // Conecta ao "servidor"
+                socket.connect(roomId, username);
+                
+                // Atualiza a UI
+                roomStatusDisplay.textContent = `Sala: ${roomId}`;
+                userListDisplay.classList.remove('hidden');
+            }
+            
+            // Função para atualizar a lista de usuários
+            function updateUserList(userArray) {
+                userListDisplay.innerHTML = '';
+                
+                userArray.forEach(user => {
+                    const userElement = document.createElement('div');
+                    userElement.className = 'user-badge bg-gray-800 text-white px-3 py-1 rounded-full flex items-center gap-2';
+                    
+                    if (user.id === currentUser.id) {
+                        userElement.classList.add('bg-purple-800');
+                    }
+                    
+                    userElement.innerHTML = `
+                        <i class="fas fa-user"></i>
+                        <span>${user.username}</span>
+                    `;
+                    
+                    userListDisplay.appendChild(userElement);
+                });
+            }
+            
+            // Configura o handler de mensagens do "socket"
+            socket.onmessage = function(event) {
+                const { type, data } = event;
+                
+                switch (type) {
+                    case 'dice_rolled':
+                        // Verifica se a jogada já foi registrada localmente
+                        if (!hasRolled) {
+                            const total = updateDice(data.dice1, data.dice2, data.user);
+                            addToHistory(data.dice1, data.dice2, total, data.user, data.timestamp);
+                        }
+                        break;
+                        
+                    case 'user_joined':
+                        if (!users[data.id]) {
+                            users[data.id] = data;
+                            updateUserList(Object.values(users));
+                            
+                            // Adiciona notificação
+                            if (data.id !== currentUser.id) {
+                                const notification = document.createElement('div');
+                                notification.className = 'notification';
+                                notification.textContent = `${data.username} entrou na sala!`;
+                                
+                                document.body.appendChild(notification);
+                                setTimeout(() => {
+                                    notification.remove();
+                                }, 3000);
+                            }
+                        }
+                        break;
+                        
+                    case 'user_left':
+                        if (users[data.id]) {
+                            delete users[data.id];
+                            updateUserList(Object.values(users));
+                        }
+                        break;
+                }
+            };
+            
+            // Event Listeners
+            rollButton.addEventListener('click', function() {
+                hasRolled = false; // Reseta a flag antes de cada rolagem
+                if (currentRoom) {
+                    rollDiceMultiplayer();
+                } else {
+                    rollDiceSinglePlayer();
+                }
+            });
+            
+            resetButton.addEventListener('click', function() {
+                if (!currentRoom || isHost) {
+                    resetHistory();
+                } else {
+                    alert('Apenas o host pode limpar o histórico nesta sala.');
+                }
+            });
+            
+            // Criação de sala
+            createRoomButton.addEventListener('click', () => {
+                showModal(roomModal);
+                usernameInput.focus();
+            });
+            
+            createRoomBtn.addEventListener('click', () => {
+                const username = usernameInput.value.trim();
+                if (username.length < 2) {
+                    alert('Por favor, insira um nome com pelo menos 2 caracteres');
+                    return;
+                }
+                
+                hideModal(roomModal);
+                createRoom(username);
+            });
+            
+            cancelRoomBtn.addEventListener('click', () => {
+                hideModal(roomModal);
+            });
+            
+            // Entrar em sala
+            joinRoomBtn.addEventListener('click', () => {
+                const username = joinUsernameInput.value.trim();
+                if (username.length < 2) {
+                    alert('Por favor, insira um nome com pelo menos 2 caracteres');
+                    return;
+                }
+                
+                hideModal(joinModal);
+                
+                // Verifica se há um parâmetro de sala na URL
+                const urlParams = new URLSearchParams(window.location.search);
+                const roomId = urlParams.get('room');
+                
+                if (roomId) {
+                    joinRoom(roomId, username);
+                }
+            });
+            
+            cancelJoinBtn.addEventListener('click', () => {
+                hideModal(joinModal);
+            });
+            
+            // Link da sala
+            closeLinkBtn.addEventListener('click', () => {
+                hideModal(linkModal);
+            });
+            
+            copyLinkBtn.addEventListener('click', () => {
+                roomLink.select();
+                document.execCommand('copy');
+                
+                // Feedback visual
+                const originalText = copyLinkBtn.innerHTML;
+                copyLinkBtn.innerHTML = '<i class="fas fa-check"></i> Copiado!';
+                
+                setTimeout(() => {
+                    copyLinkBtn.innerHTML = originalText;
+                }, 2000);
+            });
+            
+            // Keyboard support
+            document.addEventListener('keydown', function(e) {
+                if (e.code === 'Space' && !isRolling) {
+                    hasRolled = false; // Reseta a flag antes de cada rolagem
+                    if (currentRoom) {
+                        rollDiceMultiplayer();
+                    } else {
+                        rollDiceSinglePlayer();
+                    }
+                }
+            });
+            
+            // Verifica se há um parâmetro de sala na URL ao carregar
+            const urlParams = new URLSearchParams(window.location.search);
+            const roomId = urlParams.get('room');
+            
+            if (roomId) {
+                showModal(joinModal);
+                joinUsernameInput.focus();
+            }
+            
+            // Configuração inicial - dados vazios
+            totalDisplay.textContent = '-';
+            resultDisplay.textContent = '';
+            currentUserDisplay.textContent = '';
+            createDots(dice1, null);
+            createDots(dice2, null);
+        });
+    </script>
 </body>
 </html>
